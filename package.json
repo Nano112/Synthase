@@ -1,36 +1,36 @@
 {
-  "name": "synthase",
-  "type": "module",
-  "version": "0.0.0",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "description": "",
-  "exports": {
-    "types": "./dist/index.d.ts",
-    "import": "./dist/index.js",
-    "require": "./dist/index.cjs"
-  },
+	"name": "synthase",
+	"description": "Composable schematic-build runner",
+	"version": "0.0.1",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
   "scripts": {
+    "dev": "vite",
+    "dev:api": "cd dev-api && npm run dev",
     "build": "bun run build.ts",
-    "prepublishOnly": "bun run build"
+    "test": "bun test"
   },
-  "files": [
-    "dist"
-  ],
-  "keywords": [
-    "bun"
-  ],
-  "license": "MIT",
-  "homepage": "https://github.com/wobsoriano/pkg-name#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/wobsoriano/pkg-name.git"
-  },
-  "bugs": "https://github.com/wobsoriano/pkg-name/issues",
-  "author": "Robert Soriano <sorianorobertc@gmail.com>",
-  "devDependencies": {
-    "bun-plugin-dts": "^0.3.0",
-    "@types/bun": "^1.1.10"
-  }
+	"keywords": [
+		"minecraft",
+		"schematic",
+		"runner"
+	],
+	"author": "Nano112",
+	"license": "AGPL-3.0",
+	"dependencies": {
+		"@originjs/vite-plugin-commonjs": "^1.0.3",
+		"@types/cors": "^2.8.19",
+		"@types/express": "^5.0.3",
+		"cors": "^2.8.5",
+		"express": "^5.1.0",
+		"nucleation": "^0.1.20",
+		"quickjs-emscripten": "^0.31.0",
+		"vite": "^6.3.5",
+		"vite-plugin-top-level-await": "^1.5.0",
+		"vite-plugin-wasm": "^3.4.1"
+	}
 }
