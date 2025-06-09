@@ -369,7 +369,8 @@ export class ScriptValidator {
 				: content.match(/export\s+const\s+io\s*=\s*(\{[\s\S]*?\})/)?.[1];
 			if (!ioText) return;
 
-			const ioSchema = eval(`(${ioText})`);
+			// DANGEROUS: but it's the whole point of this project
+			const ioSchema = (0, eval)(`(${ioText})`);
 
 			if (typeof ioSchema !== "object" || ioSchema === null) {
 				errors.push("IO schema must be an object");

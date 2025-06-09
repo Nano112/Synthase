@@ -1,34 +1,60 @@
 {
 	"name": "synthase",
-	"description": "Composable schematic-build runner",
-	"version": "0.0.1",
+	"version": "1.0.0",
+	"description": "A secure, sandboxed, and extensible JavaScript execution engine built with TypeScript.",
+	"author": "Nano112 (https://github.com/Nano112)",
+	"license": "AGPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Nano112/synthase.git"
+	},
+	"bugs": {
+		"url": "https://github.com/Nano112/synthase/issues"
+	},
+	"homepage": "https://github.com/Nano112/synthase#readme",
+	"keywords": [
+		"sandbox",
+		"javascript",
+		"typescript",
+		"execution engine",
+		"eval",
+		"secure",
+		"sandboxed",
+		"scripting",
+		"runtime",
+		"vm",
+		"interpreter"
+	],
 	"type": "module",
 	"main": "./dist/index.js",
+	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		}
+	},
 	"files": [
-		"dist"
+		"dist",
+		"README.md",
+		"LICENSE"
 	],
 	"scripts": {
-		"dev": "vite",
-		"dev:api": "cd src && npm run dev",
-		"build": "bun run build.ts",
-		"test": "bun test"
+		"build": "tsup src/index.ts --format cjs,esm --dts --clean",
+		"test": "bun test",
+		"lint": "eslint . --ext .ts",
+		"format": "prettier --write .",
+		"prepublishOnly": "npm run build"
 	},
-	"keywords": [
-		"minecraft",
-		"schematic",
-		"runner"
-	],
-	"author": "Nano112",
-	"license": "AGPL-3.0",
-	"dependencies": {
-		"@originjs/vite-plugin-commonjs": "^1.0.3",
-		"bun-plugin-dts": "^0.3.0",
-		"vite": "^6.3.5",
-		"vite-plugin-top-level-await": "^1.5.0",
-		"vite-plugin-wasm": "^3.4.1"
-	},
+	"dependencies": {},
 	"devDependencies": {
-		"@types/node": "^22.15.30"
+		"@types/node": "^20.14.2",
+		"bun-types": "latest",
+		"eslint": "^8.57.0",
+		"prettier": "^3.3.2",
+		"tsup": "^8.1.0",
+		"typescript": "^5.4.5"
 	}
 }

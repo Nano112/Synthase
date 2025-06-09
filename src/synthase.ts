@@ -601,12 +601,15 @@ export class Synthase {
 							entries.reduce((sum, e) => sum + (now - e.timestamp), 0) /
 								entries.length /
 								1000
-					  )
+						)
 					: 0,
-			sources: entries.reduce((acc, e) => {
-				acc[e.source] = (acc[e.source] || 0) + 1;
-				return acc;
-			}, {} as Record<string, number>),
+			sources: entries.reduce(
+				(acc, e) => {
+					acc[e.source] = (acc[e.source] || 0) + 1;
+					return acc;
+				},
+				{} as Record<string, number>
+			),
 		};
 	}
 
@@ -631,7 +634,7 @@ export class Synthase {
 			content.length > 0
 				? (
 						content.charCodeAt(0) + content.charCodeAt(content.length - 1)
-				  ).toString(36)
+					).toString(36)
 				: "0";
 
 		return `${hashStr}_${checksum}_${content.length}`;
@@ -681,7 +684,8 @@ export class Synthase {
 
 			if (!ioText) throw new Error("No 'io' export found in script");
 
-			const io = eval(`(${ioText})`);
+			// DANGEROUS: but it's the whole point of this project
+			const io = (0, eval)(`(${ioText})`);
 
 			// More flexible regex for default function - handles various formats
 			let fnMatch = moduleInfo.content.match(
@@ -697,7 +701,8 @@ export class Synthase {
 
 			if (!fnMatch)
 				throw new Error("No default function export found in script");
-			const defaultFunction = eval(`(${fnMatch[1]})`);
+			// DANGEROUS: but it's the whole point of this project
+			const defaultFunction = (0, eval)(`(${fnMatch[1]})`);
 
 			const deps = this.extractDependencies(moduleInfo.content);
 

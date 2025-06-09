@@ -143,7 +143,10 @@ export async function executeWithValidation(
 				if (!shouldShow) continue;
 
 				// Check if parameter is required (no default value) and missing
-				const hasDefault = "default" in paramSpec;
+				const hasDefault =
+					typeof paramSpec === "object" &&
+					paramSpec !== null &&
+					"default" in paramSpec;
 				const isPresent = key in inputsWithDefaults;
 
 				console.log(
