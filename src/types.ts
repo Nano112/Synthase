@@ -1,7 +1,7 @@
 // types.ts
 // Enhanced parameter definition
 export interface ParameterDef {
-	type: "int" | "float" | "string" | "boolean" | "object" | "array" | "BlockId";
+	type: "int" | "float" | "string" | "boolean" | "object" | "array";
 	default?: any;
 	min?: number;
 	max?: number;
@@ -88,10 +88,7 @@ export interface ExecutionContext {
 		shuffleArray: (array: any[]) => any[];
 		randomChoice: (array: any[]) => any;
 	};
-	Schematic: any; // Your SchematicWrapper type
-	Blocks: {
-		get: (blockId: string) => { id: string; name: string };
-	};
+
 	/**
 	 * Import script function that returns callable script
 	 */
@@ -177,8 +174,6 @@ export class ParameterUtils {
 				return {};
 			case "array":
 				return [];
-			case "BlockId":
-				return "minecraft:stone";
 			default:
 				return null;
 		}
@@ -279,21 +274,6 @@ export class ParameterUtils {
 				if (!Array.isArray(value)) {
 					throw new Error(
 						`${paramName} must be an array, got: ${typeof value}`
-					);
-				}
-				break;
-
-			case "BlockId":
-				if (typeof value !== "string" || !value.includes(":")) {
-					throw new Error(
-						`${paramName} must be a valid BlockId (namespace:id), got: ${value}`
-					);
-				}
-				if (param.options && !param.options.includes(value)) {
-					throw new Error(
-						`${paramName} must be one of: ${param.options.join(
-							", "
-						)}, got: ${value}`
 					);
 				}
 				break;

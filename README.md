@@ -54,60 +54,6 @@ console.log(result.message); // "Hello, Synthase! Hello, Synthase!"
 
 Synthase's power comes from its injectable context system. Instead of hardcoding dependencies, you inject context providers for different domains:
 
-### Minecraft Context Example
-
-```typescript
-import { execute } from "synthase";
-import initNucleationWasm, { SchematicWrapper } from "nucleation";
-
-// Create Minecraft context provider
-async function createMinecraftContext() {
-	await initNucleationWasm();
-	return {
-		Schematic: SchematicWrapper,
-		Blocks: {
-			get: (blockId: string) => ({ id: blockId, name: blockId }),
-		},
-	};
-}
-
-const minecraftScript = `
-export const io = {
-  inputs: {
-    width: { type: 'int', default: 5 },
-    height: { type: 'int', default: 5 },
-    material: { type: 'string', default: 'minecraft:stone' }
-  },
-  outputs: {
-    schematic: { type: 'object' },
-    blocks: { type: 'int' }
-  }
-};
-
-export default async function({ width, height, material }, { Schematic, Logger }) {
-  Logger.info(\`Building \${width}x\${height} structure\`);
-  
-  const schematic = new Schematic(width, height, 1);
-  let blocks = 0;
-  
-  for (let x = 0; x < width; x++) {
-    for (let y = 0; y < height; y++) {
-      schematic.set_block(x, y, 0, material);
-      blocks++;
-    }
-  }
-  
-  return { schematic, blocks };
-}`;
-
-const minecraftContext = await createMinecraftContext();
-const result = await execute(
-	minecraftScript,
-	{ width: 3, height: 3, material: "minecraft:diamond_block" },
-	{ contextProviders: minecraftContext }
-);
-```
-
 ### Data Analysis Context Example
 
 ```typescript

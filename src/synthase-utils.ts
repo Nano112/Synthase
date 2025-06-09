@@ -99,56 +99,89 @@ export async function executeWithValidation(
 	options: QuickExecuteOptions = {}
 ): Promise<any> {
 	console.log("🔍 Execute with validation: validating script first");
+	console.log("🔍 Inputs received:", inputs);
 
-	// First validate the script
-	const validation = await validate(scriptContentOrResolver, options);
+	const synthase = new Synthase(scriptContentOrResolver, options);
 
-	if (!validation.valid) {
-		throw new Error(
-			`Script validation failed: ${validation.errors?.join(", ")}`
-		);
+	if (options.cachePolicy) {
+		synthase.setCachePolicy(options.cachePolicy);
 	}
 
-	if (!validation.io) {
-		throw new Error("No IO schema found in script");
-	}
-
-	// Validate inputs against IO schema
 	try {
-		const { ParameterUtils } = await import("./types");
+		await synthase.waitForInitialization();
 
-		const inputsWithDefaults = ParameterUtils.applyDefaults(
-			inputs,
-			validation.io.inputs
-		);
+		const io = synthase.getIO();
+		console.log("🔍 IO Schema:", JSON.stringify(io, null, 2));
 
-		for (const [key, spec] of Object.entries(validation.io.inputs)) {
-			// Cast spec to ParameterSpec to fix type error
-			const paramSpec = spec as ParameterSpec;
-
-			if (!ParameterUtils.shouldShowParameter(paramSpec, inputsWithDefaults))
-				continue;
-
-			if (key in inputsWithDefaults) {
-				ParameterUtils.validateParameter(
-					inputsWithDefaults[key],
-					paramSpec,
-					key
-				);
-			} else {
-				throw new Error(`Missing required input: ${key}`);
-			}
+		if (!io) {
+			throw new Error("No IO schema found in script");
 		}
 
-		console.log("✅ Input validation passed");
+		try {
+			const { ParameterUtils } = await import("./types");
 
-		// Now execute with validated inputs
-		return await execute(scriptContentOrResolver, inputsWithDefaults, options);
+			const inputsWithDefaults = ParameterUtils.applyDefaults(
+				inputs,
+				io.inputs
+			);
+
+			console.log("🔍 Inputs with defaults:", inputsWithDefaults);
+
+			// Check for missing required inputs first
+			for (const [key, spec] of Object.entries(io.inputs)) {
+				const paramSpec = spec as ParameterSpec;
+
+				console.log(`🔍 Checking parameter: ${key}`, paramSpec);
+
+				// Skip conditional parameters that shouldn't be shown
+				const shouldShow = ParameterUtils.shouldShowParameter(
+					paramSpec,
+					inputsWithDefaults
+				);
+				console.log(`🔍 Should show parameter ${key}:`, shouldShow);
+
+				if (!shouldShow) continue;
+
+				// Check if parameter is required (no default value) and missing
+				const hasDefault = "default" in paramSpec;
+				const isPresent = key in inputsWithDefaults;
+
+				console.log(
+					`🔍 Parameter ${key}: hasDefault=${hasDefault}, isPresent=${isPresent}`
+				);
+
+				if (!isPresent && !hasDefault) {
+					console.log(`🔍 Missing required input detected: ${key}`);
+					throw new Error(`Missing required input: ${key}`);
+				}
+
+				// Validate parameter value if present
+				if (isPresent) {
+					ParameterUtils.validateParameter(
+						inputsWithDefaults[key],
+						paramSpec,
+						key
+					);
+				}
+			}
+
+			console.log(
+				"✅ Input validation passed - this should not happen for missing required inputs"
+			);
+			const result = await synthase.call(inputsWithDefaults);
+			console.log("✅ Execute with validation completed successfully");
+			return result;
+		} catch (error: any) {
+			console.log("🔍 Validation error caught:", error.message);
+			throw new Error(`Input validation failed: ${error.message}`);
+		}
 	} catch (error: any) {
-		throw new Error(`Input validation failed: ${error.message}`);
+		console.error("❌ Execute with validation failed:", error.message);
+		throw error;
+	} finally {
+		synthase.dispose();
 	}
 }
-
 /**
  * Batch execute multiple scripts
  */
@@ -263,10 +296,16 @@ export async function createHotReloadable(
 		reload: async () => {
 			console.log("🔄 Hot reloading script");
 			synthase.dispose();
+
+			// Create new instance and let errors propagate
 			synthase = new Synthase(getScript(), options);
 			if (options.cachePolicy) {
 				synthase.setCachePolicy(options.cachePolicy);
 			}
+
+			// Wait for initialization to complete so errors are thrown here
+			await synthase.waitForInitialization();
+
 			console.log("✅ Hot reload completed");
 		},
 

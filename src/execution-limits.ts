@@ -35,33 +35,26 @@ export class ExecutionLimits {
 		fn: () => Promise<T>,
 		timeoutMs: number = this.timeout
 	): Promise<T> {
-		const timeoutPromise = new Promise<never>((_, reject) => {
-			const timeoutId = setTimeout(() => {
+		let timeoutId!: ReturnType<typeof setTimeout>;
+
+		const timeoutPromise: Promise<never> = new Promise((_, reject) => {
+			timeoutId = setTimeout(() => {
 				reject(new Error(`Script execution timeout after ${timeoutMs}ms`));
 			}, timeoutMs);
-
-			// Store timeout ID for potential cleanup
-			(timeoutPromise as any)._timeoutId = timeoutId;
 		});
+
+		(timeoutPromise as any)._timeoutId = timeoutId;
 
 		try {
 			const result = await Promise.race([fn(), timeoutPromise]);
-
-			// Clear timeout if execution completed successfully
-			const timeoutId = (timeoutPromise as any)._timeoutId;
-			if (timeoutId) clearTimeout(timeoutId);
-
+			clearTimeout(timeoutId); // success → clean up
 			return result;
 		} catch (error: any) {
-			// Clear timeout on error too
-			const timeoutId = (timeoutPromise as any)._timeoutId;
-			if (timeoutId) clearTimeout(timeoutId);
+			clearTimeout(timeoutId); // failure → clean up
 
-			if (error.message.includes("timeout")) {
+			if (error.message.toLowerCase().includes("timeout")) {
 				console.error(`❌ Script execution timeout (${timeoutMs}ms)`);
-				throw new Error(
-					`Script execution exceeded time limit (${timeoutMs / 1000}s)`
-				);
+				throw error;
 			}
 			throw error;
 		}

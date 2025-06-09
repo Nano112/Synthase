@@ -6,6 +6,7 @@ import type {
 	ScriptContentResolver,
 	ImportedScript,
 	SynthaseConfig,
+	ScriptRegistry,
 } from "./types";
 import { ParameterUtils } from "./types";
 import { ExecutionLimits } from "./execution-limits";
@@ -25,6 +26,7 @@ export class Synthase {
 	private executionLimits = new ExecutionLimits();
 	private scriptValidator = new ScriptValidator();
 	private resourceMonitor = new ResourceMonitor();
+	private registry?: ScriptRegistry;
 
 	constructor(
 		private scriptContentOrResolver: string | ScriptContentResolver,
@@ -37,6 +39,7 @@ export class Synthase {
 		if (config?.resourceMonitor) {
 			this.resourceMonitor = new ResourceMonitor(config.resourceMonitor);
 		}
+		this.registry = config?.registry;
 
 		// Start initialization immediately but don't block constructor
 		this.initializationPromise = this.initialize();
@@ -321,7 +324,7 @@ export class Synthase {
 					})`
 				);
 
-				// Check import limits
+				/* ─── hard-limits ──────────────────────────────────────────────── */
 				if (
 					importTracker.importCount >= this.executionLimits.maxImportedScripts
 				) {
@@ -329,8 +332,6 @@ export class Synthase {
 						`Import limit exceeded: maximum ${this.executionLimits.maxImportedScripts} scripts per execution`
 					);
 				}
-
-				// Check recursion depth
 				if (
 					importTracker.importStack.length >=
 					this.executionLimits.maxRecursionDepth
@@ -340,35 +341,58 @@ export class Synthase {
 					);
 				}
 
-				// Check resource usage
 				this.resourceMonitor.check();
 
+				/* ─── resolve actual script source ─────────────────────────────── */
 				let scriptContent: string;
-				const scriptId = `imported-${Date.now()}-${Math.random()
-					.toString(36)
-					.substr(2, 9)}`;
 
-				if (typeof contentOrResolver === "string") {
-					scriptContent = contentOrResolver;
-				} else {
+				if (typeof contentOrResolver === "function") {
+					/* resolver callback (unchanged) */
 					try {
 						scriptContent = await contentOrResolver();
-					} catch (error: any) {
+					} catch (err: any) {
+						throw new Error(`Failed to resolve script content: ${err.message}`);
+					}
+				} else {
+					/* STRING: try registry first, then treat as raw code */
+					const registryId = contentOrResolver;
+					let resolved: unknown;
+
+					if (this.registry) {
+						try {
+							resolved = await this.registry.resolve(registryId);
+						} catch {
+							/* not found – fall through to raw code */
+						}
+					}
+
+					if (typeof resolved === "string") {
+						scriptContent = resolved;
+					} else if (
+						resolved &&
+						typeof (resolved as any).content === "string"
+					) {
+						scriptContent = (resolved as any).content;
+					} else if (resolved && typeof (resolved as any).script === "string") {
+						scriptContent = (resolved as any).script;
+					} else if (resolved !== undefined) {
 						throw new Error(
-							`Failed to resolve script content: ${error.message}`
+							`Registry returned unsupported value for "${registryId}" (expected string)`
 						);
+					} else {
+						/* treat the incoming string itself as code */
+						scriptContent = registryId;
 					}
 				}
 
-				// Check for recursive imports by content hash
+				/* ─── anti-recursive & validation checks ───────────────────────── */
 				const contentHash = this.hashContent(scriptContent);
 				if (importTracker.importedScripts.has(contentHash)) {
 					throw new Error(
-						`Recursive import detected: script content already imported in this execution`
+						"Recursive import detected: script content already imported in this execution"
 					);
 				}
 
-				// Validate imported script
 				const validation = this.scriptValidator.validateScript(scriptContent);
 				if (!validation.valid) {
 					throw new Error(
@@ -376,16 +400,19 @@ export class Synthase {
 					);
 				}
 
-				// Track this import
+				/* ─── bookkeeping ─────────────────────────────────────────────── */
+				const scriptId = `imported-${Date.now()}-${Math.random()
+					.toString(36)
+					.substr(2, 9)}`;
+
 				importTracker.importCount++;
 				importTracker.importStack.push(scriptId);
 				importTracker.importedScripts.add(contentHash);
 
 				try {
-					// Process the script
+					/* ─── compile & wrap ─────────────────────────────────────────── */
 					const loadedScript = this.processScript(scriptId, scriptContent);
 
-					// Create callable function that shares this context
 					const importedScript = async (
 						inputs: Record<string, any>
 					): Promise<any> => {
@@ -394,26 +421,23 @@ export class Synthase {
 							inputs
 						);
 
-						// Validate inputs for this script
 						const validatedInputs = this.validateInputs(
 							inputs,
 							loadedScript.io
 						);
-
-						// Execute with same context (shared Logger, Calculator, etc.)
 						const context = await this.createExecutionContext();
 						return await loadedScript.defaultFunction(validatedInputs, context);
 					};
 
-					// Attach metadata
-					(importedScript as any).io = loadedScript.io;
-					(importedScript as any).deps = loadedScript.deps;
-					(importedScript as any).id = scriptId;
+					Object.assign(importedScript, {
+						io: loadedScript.io,
+						deps: loadedScript.deps,
+						id: scriptId,
+					});
 
 					console.log(`✅ Script imported successfully: ${scriptId}`);
 					return importedScript as ImportedScript;
 				} finally {
-					// Clean up tracking
 					importTracker.importStack.pop();
 				}
 			},
@@ -587,16 +611,30 @@ export class Synthase {
 	}
 
 	/**
-	 * Simple content hashing for cache invalidation
+	 * Better content hashing for cache invalidation
 	 */
 	private hashContent(content: string): string {
 		let hash = 0;
+		if (content.length === 0) return hash.toString(36);
+
 		for (let i = 0; i < content.length; i++) {
 			const char = content.charCodeAt(i);
 			hash = (hash << 5) - hash + char;
-			hash = hash & hash; // 32-bit integer
+			hash = hash & hash;
 		}
-		return Math.abs(hash).toString(36);
+
+		hash = hash ^ content.length;
+
+		const hashStr = Math.abs(hash).toString(36);
+
+		const checksum =
+			content.length > 0
+				? (
+						content.charCodeAt(0) + content.charCodeAt(content.length - 1)
+				  ).toString(36)
+				: "0";
+
+		return `${hashStr}_${checksum}_${content.length}`;
 	}
 
 	/**

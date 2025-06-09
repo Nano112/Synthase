@@ -59,6 +59,11 @@ export class ScriptValidator {
 			pattern: /constructor\.prototype/,
 			message: "Prototype manipulation is prohibited",
 		},
+		// Add missing Object.prototype pattern
+		{
+			pattern: /Object\.prototype/,
+			message: "Prototype manipulation is prohibited",
+		},
 
 		// Very large loops (potential DoS)
 		{
@@ -83,6 +88,111 @@ export class ScriptValidator {
 	];
 
 	/**
+	 * Remove comments from code
+	 */
+	private stripComments(content: string): string {
+		let result = "";
+		let inString = false;
+		let stringChar = "";
+		let inSingleLineComment = false;
+		let inMultiLineComment = false;
+		let escapeNext = false; // <<< FIX: Use a stateful flag for escapes
+
+		for (let i = 0; i < content.length; i++) {
+			const char = content[i];
+			const nextChar = content[i + 1];
+
+			if (escapeNext) {
+				escapeNext = false;
+			} else if (char === "\\") {
+				escapeNext = true;
+			} else if (!inSingleLineComment && !inMultiLineComment) {
+				if (char === '"' || char === "'" || char === "`") {
+					if (!inString) {
+						inString = true;
+						stringChar = char;
+					} else if (char === stringChar) {
+						inString = false;
+						stringChar = "";
+					}
+				}
+			}
+
+			if (!inString && !escapeNext) {
+				if (char === "/" && nextChar === "/" && !inMultiLineComment) {
+					inSingleLineComment = true;
+					i++;
+					continue;
+				}
+				if (char === "/" && nextChar === "*" && !inSingleLineComment) {
+					inMultiLineComment = true;
+					i++;
+					continue;
+				}
+			}
+
+			if (inMultiLineComment && char === "*" && nextChar === "/") {
+				inMultiLineComment = false;
+				i++;
+				continue;
+			}
+
+			if (inSingleLineComment && char === "\n") {
+				inSingleLineComment = false;
+			}
+
+			if (!inSingleLineComment && !inMultiLineComment) {
+				result += char;
+			} else if (char === "\n") {
+				result += char;
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Replace string content with spaces to maintain structure
+	 */
+	private maskStrings(content: string): string {
+		let result = "";
+		let inString = false;
+		let stringChar = "";
+		let escapeNext = false;
+
+		for (let i = 0; i < content.length; i++) {
+			const char = content[i];
+
+			if (escapeNext) {
+				result += inString ? " " : char;
+				escapeNext = false;
+				continue;
+			}
+
+			if (char === "\\") {
+				escapeNext = true;
+				result += inString ? " " : char;
+				continue;
+			}
+
+			if ((char === '"' || char === "'" || char === "`") && !inString) {
+				inString = true;
+				stringChar = char;
+				result += char;
+			} else if (inString && char === stringChar) {
+				inString = false;
+				stringChar = "";
+				result += char;
+			} else if (inString) {
+				result += " ";
+			} else {
+				result += char;
+			}
+		}
+
+		return result;
+	}
+
+	/**
 	 * Validate script content
 	 */
 	validateScript(content: string): {
@@ -93,30 +203,29 @@ export class ScriptValidator {
 		const errors: string[] = [];
 		const warnings: string[] = [];
 
-		// Check for required patterns
+		const strippedContent = this.stripComments(content);
+		const maskedContent = this.maskStrings(strippedContent);
+
 		for (const required of this.requiredPatterns) {
-			if (!required.pattern.test(content)) {
+			if (!required.pattern.test(strippedContent)) {
 				errors.push(required.message);
 			}
 		}
 
-		// Check for dangerous patterns
 		for (const danger of this.dangerousPatterns) {
-			if (danger.pattern.test(content)) {
+			if (danger.pattern.test(maskedContent)) {
 				errors.push(danger.message);
 			}
 		}
 
-		// Additional structural validation
 		this.validateStructure(content, errors, warnings);
 
-		// Validate IO schema if possible
-		this.validateIOSchema(content, errors, warnings);
+		this.validateIOSchema(strippedContent, errors, warnings);
 
 		return {
 			valid: errors.length === 0,
-			errors,
-			warnings,
+			errors: [...errors],
+			warnings: [...warnings],
 		};
 	}
 
@@ -128,47 +237,39 @@ export class ScriptValidator {
 		errors: string[],
 		warnings: string[]
 	): void {
-		// Check for basic syntax issues with ES6 modules
-		try {
-			// For ES6 modules, we can't use new Function() directly
-			// Instead, we'll do basic checks for common syntax issues
-
-			// Check for unmatched quotes
-			if (!this.hasMatchedQuotes(content)) {
-				errors.push("Syntax error: Unmatched quotes detected");
-				return;
-			}
-
-			// Check for basic ES6 module structure
-			if (!content.includes("export")) {
-				errors.push(
-					"Syntax error: No export statements found - scripts must be ES6 modules"
-				);
-				return;
-			}
-		} catch (syntaxError: any) {
-			errors.push(`Syntax error: ${syntaxError.message}`);
-			return; // Don't continue if basic syntax is wrong
+		if (!this.hasMatchedQuotes(content)) {
+			errors.push("Unmatched quotes detected");
+			return;
 		}
 
-		// Check for unmatched braces/parentheses
+		if (!content.includes("export")) {
+			errors.push("No export statements found - scripts must be ES6 modules");
+			return;
+		}
+
 		const braceBalance = this.checkBraceBalance(content);
 		if (braceBalance !== 0) {
 			errors.push("Unmatched braces detected");
 		}
 
-		// Check for very long lines (might indicate minified/obfuscated code)
 		const lines = content.split("\n");
 		for (let i = 0; i < lines.length; i++) {
 			if (lines[i].length > 1000) {
+				if (
+					lines[i].includes("options:") &&
+					lines[i].includes("[") &&
+					lines[i].includes("]")
+				) {
+					continue;
+				}
+
 				warnings.push(
 					`Very long line detected at line ${i + 1} - possible minified code`
 				);
-				break; // Only warn once
+				break;
 			}
 		}
 
-		// Check for excessive nesting
 		const maxNesting = this.getMaxNestingLevel(content);
 		if (maxNesting > 10) {
 			warnings.push(
@@ -176,9 +277,7 @@ export class ScriptValidator {
 			);
 		}
 
-		// Check script length
 		if (content.length > 100000) {
-			// 100KB
 			warnings.push(
 				"Script is very large - consider breaking into smaller modules"
 			);
@@ -189,48 +288,53 @@ export class ScriptValidator {
 	 * Check if quotes are properly matched in code
 	 */
 	private hasMatchedQuotes(content: string): boolean {
-		let singleQuotes = 0;
-		let doubleQuotes = 0;
-		let templateQuotes = 0;
+		let inString = false;
+		let stringChar: '"' | "'" | "`" | "" = "";
 		let inComment = false;
 
 		for (let i = 0; i < content.length; i++) {
-			const char = content[i];
-			const nextChar = content[i + 1];
-			const prevChar = content[i - 1];
+			const ch = content[i];
+			const nxt = content[i + 1];
 
-			// Handle comments
-			if (char === "/" && nextChar === "/") {
-				inComment = true;
-				continue;
+			/* ---- comment state machine ---- */
+			if (!inString) {
+				if (!inComment && ch === "/" && nxt === "/") {
+					inComment = true;
+					i++;
+					continue;
+				}
+				if (!inComment && ch === "/" && nxt === "*") {
+					inComment = true;
+					i++;
+					continue;
+				}
+				if (inComment && ch === "\n") {
+					inComment = false;
+					continue;
+				}
+				if (inComment && ch === "*" && nxt === "/") {
+					inComment = false;
+					i++;
+					continue;
+				}
 			}
-			if (char === "/" && nextChar === "*") {
-				inComment = true;
-				continue;
-			}
-			if (inComment && char === "\n") {
-				inComment = false;
-				continue;
-			}
-			if (inComment && char === "*" && nextChar === "/") {
-				inComment = false;
-				i++; // Skip the '/'
-				continue;
-			}
-
 			if (inComment) continue;
 
-			// Count unescaped quotes
-			if (char === '"' && prevChar !== "\\") doubleQuotes++;
-			if (char === "'" && prevChar !== "\\") singleQuotes++;
-			if (char === "`" && prevChar !== "\\") templateQuotes++;
+			/* ---- string state machine ---- */
+			if (!inString && (ch === '"' || ch === "'" || ch === "`")) {
+				inString = true;
+				stringChar = ch;
+				continue;
+			}
+			if (inString && ch === stringChar && content[i - 1] !== "\\") {
+				inString = false;
+				stringChar = "";
+				continue;
+			}
 		}
 
-		return (
-			singleQuotes % 2 === 0 &&
-			doubleQuotes % 2 === 0 &&
-			templateQuotes % 2 === 0
-		);
+		// We’re valid if we closed every open string (and comment)
+		return !inString && !inComment;
 	}
 
 	/**
@@ -242,17 +346,22 @@ export class ScriptValidator {
 		warnings: string[]
 	): void {
 		try {
-			// More robust regex to match the io export
-			// This handles multiline objects better
+			const stringIoMatch = content.match(
+				/export\s+const\s+io\s*=\s*["'`][^"'`]*["'`]/
+			);
+			if (stringIoMatch) {
+				errors.push("IO schema must be an object");
+				return;
+			}
+
 			const ioMatch = content.match(
 				/export\s+const\s+io\s*=\s*(\{[\s\S]*?\});/
 			);
 			if (!ioMatch) {
-				// Try alternative format without trailing semicolon
 				const altMatch = content.match(
 					/export\s+const\s+io\s*=\s*(\{[\s\S]*?\})/
 				);
-				if (!altMatch) return; // Already caught by required patterns
+				if (!altMatch) return;
 			}
 
 			const ioText = ioMatch
@@ -260,16 +369,13 @@ export class ScriptValidator {
 				: content.match(/export\s+const\s+io\s*=\s*(\{[\s\S]*?\})/)?.[1];
 			if (!ioText) return;
 
-			// Try to evaluate the IO schema
 			const ioSchema = eval(`(${ioText})`);
 
-			// Validate schema structure
 			if (typeof ioSchema !== "object" || ioSchema === null) {
 				errors.push("IO schema must be an object");
 				return;
 			}
 
-			// Check for required properties
 			if (!ioSchema.inputs || typeof ioSchema.inputs !== "object") {
 				errors.push("IO schema must have an 'inputs' object");
 			}
@@ -278,7 +384,6 @@ export class ScriptValidator {
 				errors.push("IO schema must have an 'outputs' object");
 			}
 
-			// Validate parameter definitions
 			if (ioSchema.inputs) {
 				this.validateParameterDefinitions(
 					ioSchema.inputs,
@@ -317,26 +422,27 @@ export class ScriptValidator {
 			"boolean",
 			"object",
 			"array",
-			"BlockId",
+			"BlockId", // Added back based on original code
 		];
 
 		for (const [key, param] of Object.entries(params)) {
 			if (typeof param === "string") {
-				// Legacy format - just check if it's a valid type
 				if (!validTypes.includes(param)) {
 					errors.push(
 						`Invalid parameter type '${param}' for ${section}.${key}`
 					);
 				}
 			} else if (typeof param === "object" && param !== null) {
-				// Enhanced format
 				const paramObj = param as any;
 
 				if (!paramObj.type || !validTypes.includes(paramObj.type)) {
-					errors.push(`Invalid or missing type for ${section}.${key}`);
+					errors.push(
+						`Invalid parameter type '${
+							paramObj.type || "undefined"
+						}' for ${section}.${key}`
+					);
 				}
 
-				// Check for type-specific validation
 				if (paramObj.type === "int" || paramObj.type === "float") {
 					if (
 						paramObj.min !== undefined &&
@@ -357,7 +463,6 @@ export class ScriptValidator {
 					errors.push(`Options for ${section}.${key} must be an array`);
 				}
 
-				// Warn about very large option lists
 				if (
 					paramObj.options &&
 					Array.isArray(paramObj.options) &&
@@ -388,7 +493,6 @@ export class ScriptValidator {
 			const char = content[i];
 			const nextChar = content[i + 1];
 
-			// Handle string literals
 			if (!inComment && (char === '"' || char === "'" || char === "`")) {
 				if (!inString) {
 					inString = true;
@@ -400,7 +504,6 @@ export class ScriptValidator {
 				continue;
 			}
 
-			// Handle comments
 			if (!inString) {
 				if (char === "/" && nextChar === "/") {
 					inComment = true;
@@ -416,12 +519,11 @@ export class ScriptValidator {
 				}
 				if (inComment && char === "*" && nextChar === "/") {
 					inComment = false;
-					i++; // Skip the '/'
+					i++;
 					continue;
 				}
 			}
 
-			// Count braces outside strings and comments
 			if (!inString && !inComment) {
 				if (char === "{") balance++;
 				if (char === "}") balance--;
@@ -445,7 +547,6 @@ export class ScriptValidator {
 			const char = content[i];
 			const nextChar = content[i + 1];
 
-			// Handle string literals (same logic as brace balance)
 			if (!inComment && (char === '"' || char === "'" || char === "`")) {
 				if (!inString) {
 					inString = true;
@@ -457,7 +558,6 @@ export class ScriptValidator {
 				continue;
 			}
 
-			// Handle comments (same logic as brace balance)
 			if (!inString) {
 				if (char === "/" && nextChar === "/") {
 					inComment = true;
@@ -478,7 +578,6 @@ export class ScriptValidator {
 				}
 			}
 
-			// Track nesting outside strings and comments
 			if (!inString && !inComment) {
 				if (char === "{") {
 					currentNesting++;
