@@ -1,22 +1,4 @@
 {
-  "MicroPython.executeButton": [
-    {
-      "text": "▶",
-      "tooltip": "Run",
-      "alignment": "left",
-      "command": "extension.executeFile",
-      "priority": 3.5
-    }
-  ],
-  "MicroPython.syncButton": [
-    {
-      "text": "$(sync)",
-      "tooltip": "sync",
-      "alignment": "left",
-      "command": "extension.execute",
-      "priority": 4
-    }
-  ],
   "C_Cpp_Runner.cCompilerPath": "clang",
   "C_Cpp_Runner.cppCompilerPath": "clang++",
   "C_Cpp_Runner.debuggerPath": "lldb",
