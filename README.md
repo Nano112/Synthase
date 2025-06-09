@@ -347,7 +347,7 @@ Benchmark script performance.
 
 ## 🏗️ Architecture
 
-![Synthase Architecture Diagram](assets/synthase_diagram.png)
+![Synthase Architecture Diagram](assets/synthase_diagram.svg)
 
 ## 🤝 Contributing
 
