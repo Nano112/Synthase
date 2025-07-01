@@ -8,7 +8,6 @@ export class InMemoryScriptRegistry implements ScriptRegistry {
 	 */
 	register(scriptId: string, content: string): void {
 		this.scripts.set(scriptId, content);
-		console.log(`📝 Registered script: ${scriptId}`);
 	}
 
 	/**
@@ -19,7 +18,6 @@ export class InMemoryScriptRegistry implements ScriptRegistry {
 		if (!content) {
 			throw new Error(`Script not found: ${scriptId}`);
 		}
-		console.log(`📖 Resolved script: ${scriptId}`);
 		return content;
 	}
 
@@ -42,9 +40,7 @@ export class InMemoryScriptRegistry implements ScriptRegistry {
 	 */
 	unregister(scriptId: string): boolean {
 		const deleted = this.scripts.delete(scriptId);
-		if (deleted) {
-			console.log(`🗑️ Unregistered script: ${scriptId}`);
-		}
+		
 		return deleted;
 	}
 
@@ -54,7 +50,6 @@ export class InMemoryScriptRegistry implements ScriptRegistry {
 	clear(): void {
 		const count = this.scripts.size;
 		this.scripts.clear();
-		console.log(`🗑️ Cleared ${count} scripts from registry`);
 	}
 }
 
@@ -67,7 +62,6 @@ export class HttpScriptRegistry implements ScriptRegistry {
 	async resolve(scriptId: string): Promise<string> {
 		// Handle absolute URLs
 		if (scriptId.startsWith("http://") || scriptId.startsWith("https://")) {
-			console.log(`🌐 Fetching script from URL: ${scriptId}`);
 			const response = await fetch(scriptId);
 			if (!response.ok) {
 				throw new Error(
@@ -80,7 +74,6 @@ export class HttpScriptRegistry implements ScriptRegistry {
 		// Handle relative URLs with base
 		if (this.baseUrl) {
 			const fullUrl = new URL(scriptId, this.baseUrl).toString();
-			console.log(`🌐 Fetching script from: ${fullUrl}`);
 			const response = await fetch(fullUrl);
 			if (!response.ok) {
 				throw new Error(
@@ -107,9 +100,6 @@ export class CompositeScriptRegistry implements ScriptRegistry {
 	 */
 	addRegistry(registry: ScriptRegistry): void {
 		this.registries.push(registry);
-		console.log(
-			`📚 Added registry to composite (total: ${this.registries.length})`
-		);
 	}
 
 	/**
@@ -117,9 +107,6 @@ export class CompositeScriptRegistry implements ScriptRegistry {
 	 */
 	prependRegistry(registry: ScriptRegistry): void {
 		this.registries.unshift(registry);
-		console.log(
-			`📚 Prepended registry to composite (total: ${this.registries.length})`
-		);
 	}
 
 	async resolve(scriptId: string): Promise<string> {
@@ -128,19 +115,12 @@ export class CompositeScriptRegistry implements ScriptRegistry {
 		for (let i = 0; i < this.registries.length; i++) {
 			const registry = this.registries[i];
 			try {
-				console.log(
-					`🔍 Trying registry ${i + 1}/${
-						this.registries.length
-					} for: ${scriptId}`
-				);
+				
 				const result = await registry.resolve(scriptId);
-				console.log(`✅ Found script in registry ${i + 1}: ${scriptId}`);
 				return result;
 			} catch (error: any) {
 				errors.push(`Registry ${i + 1}: ${error.message}`);
-				console.log(
-					`❌ Registry ${i + 1} failed for ${scriptId}: ${error.message}`
-				);
+				
 				continue;
 			}
 		}
@@ -181,9 +161,7 @@ export class FileSystemScriptRegistry implements ScriptRegistry {
 				throw new Error(`Invalid script path: outside scripts directory`);
 			}
 
-			console.log(`📁 Reading script from file: ${scriptPath}`);
 			const content = await fs.readFile(scriptPath, "utf8");
-			console.log(`✅ Loaded script from file: ${scriptId}`);
 			return content;
 		} catch (error: any) {
 			if (error.code === "ENOENT") {
@@ -205,7 +183,6 @@ export class CachedScriptRegistry implements ScriptRegistry {
 
 	constructor(private baseRegistry: ScriptRegistry, ttlMinutes: number = 5) {
 		this.ttl = ttlMinutes * 60 * 1000;
-		console.log(`💾 Created cached registry with ${ttlMinutes}min TTL`);
 	}
 
 	async resolve(scriptId: string): Promise<string> {
@@ -214,17 +191,14 @@ export class CachedScriptRegistry implements ScriptRegistry {
 		const now = Date.now();
 
 		if (cached && now - cached.timestamp < this.ttl) {
-			console.log(`📋 Using cached script: ${scriptId}`);
 			return cached.content;
 		}
 
 		// Not in cache or expired - fetch from base registry
-		console.log(`🔄 Fetching fresh script: ${scriptId}`);
 		const content = await this.baseRegistry.resolve(scriptId);
 
 		// Store in cache
 		this.cache.set(scriptId, { content, timestamp: now });
-		console.log(`💾 Cached script: ${scriptId}`);
 
 		return content;
 	}
@@ -235,7 +209,6 @@ export class CachedScriptRegistry implements ScriptRegistry {
 	clearCache(): void {
 		const count = this.cache.size;
 		this.cache.clear();
-		console.log(`🗑️ Cleared ${count} cached scripts`);
 	}
 
 	/**
@@ -269,9 +242,7 @@ export class CachedScriptRegistry implements ScriptRegistry {
 	 */
 	invalidate(scriptId: string): boolean {
 		const deleted = this.cache.delete(scriptId);
-		if (deleted) {
-			console.log(`🗑️ Invalidated cached script: ${scriptId}`);
-		}
+		
 		return deleted;
 	}
 }
@@ -305,7 +276,6 @@ export class GitHubScriptRegistry implements ScriptRegistry {
 			headers.Authorization = `token ${this.token}`;
 		}
 
-		console.log(`🐙 Fetching script from GitHub: ${url}`);
 
 		const response = await fetch(url, { headers });
 		if (!response.ok) {
@@ -315,7 +285,6 @@ export class GitHubScriptRegistry implements ScriptRegistry {
 		}
 
 		const content = await response.text();
-		console.log(`✅ Loaded script from GitHub: ${scriptId}`);
 		return content;
 	}
 }
@@ -339,7 +308,6 @@ export class EnvironmentScriptRegistry implements ScriptRegistry {
 			this.registries[env as keyof typeof this.registries] ||
 			this.registries.default;
 
-		console.log(`🌍 Environment registry initialized for: ${env}`);
 	}
 
 	async resolve(scriptId: string): Promise<string> {
@@ -354,6 +322,5 @@ export class EnvironmentScriptRegistry implements ScriptRegistry {
 			this.registries[env as keyof typeof this.registries] ||
 			this.registries.default;
 		this.registry = newRegistry;
-		console.log(`🔄 Switched to ${env} environment registry`);
 	}
 }

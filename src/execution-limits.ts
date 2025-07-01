@@ -20,12 +20,7 @@ export class ExecutionLimits {
 			Object.assign(this, limits);
 		}
 
-		console.log(`⚙️ Execution limits configured:`, {
-			timeout: `${this.timeout}ms`,
-			maxRecursionDepth: this.maxRecursionDepth,
-			maxImportedScripts: this.maxImportedScripts,
-			maxMemory: `${Math.round(this.maxMemory / 1024 / 1024)}MB`,
-		});
+		
 	}
 
 	/**
@@ -53,7 +48,6 @@ export class ExecutionLimits {
 			clearTimeout(timeoutId); // failure → clean up
 
 			if (error.message.toLowerCase().includes("timeout")) {
-				console.error(`❌ Script execution timeout (${timeoutMs}ms)`);
 				throw error;
 			}
 			throw error;
@@ -96,6 +90,5 @@ export class ExecutionLimits {
 		}>
 	): void {
 		Object.assign(this, newLimits);
-		console.log(`⚙️ Execution limits updated:`, newLimits);
 	}
 }

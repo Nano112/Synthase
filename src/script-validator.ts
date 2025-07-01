@@ -262,6 +262,9 @@ export class ScriptValidator {
 				) {
 					continue;
 				}
+				if (lines[i].includes("accept:") && lines[i].includes("'")) {
+					continue; // Allow long accept strings for file inputs
+				}
 
 				warnings.push(
 					`Very long line detected at line ${i + 1} - possible minified code`
@@ -333,7 +336,7 @@ export class ScriptValidator {
 			}
 		}
 
-		// We’re valid if we closed every open string (and comment)
+		// We're valid if we closed every open string (and comment)
 		return !inString && !inComment;
 	}
 
@@ -418,12 +421,17 @@ export class ScriptValidator {
 	): void {
 		const validTypes = [
 			"int",
+			"integer", // Allow both int and integer
 			"float",
+			"number", // Allow both float and number
 			"string",
+			"text", // Allow both string and text
 			"boolean",
+			"bool", // Allow both boolean and bool
 			"object",
 			"array",
-			"BlockId", // Added back based on original code
+			"file", // NEW: File input support
+			"BlockId", // Keep existing custom type
 		];
 
 		for (const [key, param] of Object.entries(params)) {
@@ -444,7 +452,9 @@ export class ScriptValidator {
 					);
 				}
 
-				if (paramObj.type === "int" || paramObj.type === "float") {
+				// Numeric validation (support both int/integer and float/number)
+				if (paramObj.type === "int" || paramObj.type === "integer" || 
+					paramObj.type === "float" || paramObj.type === "number") {
 					if (
 						paramObj.min !== undefined &&
 						paramObj.max !== undefined &&
@@ -456,23 +466,55 @@ export class ScriptValidator {
 					}
 				}
 
-				if (
-					paramObj.type === "string" &&
-					paramObj.options &&
-					!Array.isArray(paramObj.options)
-				) {
-					errors.push(`Options for ${section}.${key} must be an array`);
+				// String validation (support both string and text)
+				if (paramObj.type === "string" || paramObj.type === "text") {
+					if (paramObj.options && !Array.isArray(paramObj.options)) {
+						errors.push(`Options for ${section}.${key} must be an array`);
+					}
+
+					if (
+						paramObj.options &&
+						Array.isArray(paramObj.options) &&
+						paramObj.options.length > 100
+					) {
+						warnings.push(
+							`Large options list (${paramObj.options.length}) for ${section}.${key} - consider using autocomplete`
+						);
+					}
 				}
 
-				if (
-					paramObj.options &&
-					Array.isArray(paramObj.options) &&
-					paramObj.options.length > 100
-				) {
-					warnings.push(
-						`Large options list (${paramObj.options.length}) for ${section}.${key} - consider using autocomplete`
-					);
+				// NEW: File input validation
+				if (paramObj.type === "file") {
+					if (paramObj.accept && typeof paramObj.accept !== "string") {
+						errors.push(`Accept property for ${section}.${key} must be a string`);
+					}
+					if (paramObj.maxSize !== undefined) {
+						if (typeof paramObj.maxSize !== "number" || paramObj.maxSize <= 0) {
+							errors.push(`maxSize for ${section}.${key} must be a positive number`);
+						}
+						// Warn about very large file sizes
+						if (paramObj.maxSize > 100 * 1024 * 1024) { // 100MB
+							warnings.push(`Very large maxSize (${Math.round(paramObj.maxSize / 1024 / 1024)}MB) for ${section}.${key} - consider smaller limits`);
+						}
+					}
+					if (paramObj.readAs) {
+						const validReadModes = ["text", "json", "dataURL", "arrayBuffer", "binaryString"];
+						if (!validReadModes.includes(paramObj.readAs)) {
+							errors.push(`Invalid readAs mode '${paramObj.readAs}' for ${section}.${key}. Valid modes: ${validReadModes.join(', ')}`);
+						}
+					}
 				}
+
+				// NEW: Basic conditional dependency validation
+				if (paramObj.dependsOn && typeof paramObj.dependsOn === "object") {
+					const allInputKeys = Object.keys(params);
+					for (const depKey of Object.keys(paramObj.dependsOn)) {
+						if (!allInputKeys.includes(depKey)) {
+							errors.push(`Input '${key}' depends on non-existent input '${depKey}'`);
+						}
+					}
+				}
+
 			} else {
 				errors.push(
 					`Invalid parameter definition for ${section}.${key} - must be string or object`
