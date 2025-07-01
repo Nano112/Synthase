@@ -48,7 +48,6 @@ export class InMemoryScriptRegistry implements ScriptRegistry {
 	 * Clear all scripts
 	 */
 	clear(): void {
-		const count = this.scripts.size;
 		this.scripts.clear();
 	}
 }
@@ -207,7 +206,6 @@ export class CachedScriptRegistry implements ScriptRegistry {
 	 * Clear cache
 	 */
 	clearCache(): void {
-		const count = this.cache.size;
 		this.cache.clear();
 	}
 
