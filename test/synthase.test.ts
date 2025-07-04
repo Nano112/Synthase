@@ -32,6 +32,31 @@ describe("SynthaseCore", () => {
 			const result = await synthase.call({ message: "Hello" });
 
 			expect(result).toEqual({ result: "Hello, World!" });
+    });
+    
+    it("should be able to execute a simple script that calls functions", async () => {
+      const script = `
+        export const io = {
+          inputs: {
+            name: { type: 'string', default: 'World' }
+          },
+          outputs: {
+            greeting: { type: 'string' }
+          }
+        };
+
+        function greet(name) {
+          return \`Hello, \${name}!\`;
+        }
+        export default async function({ name }) {
+          return { greeting: greet(name) };
+        }
+      `;
+
+			synthase = new Synthase(script);
+			const result = await synthase.call({ name: "Alice" });
+
+			expect(result).toEqual({ greeting: "Hello, Alice!" });
 		});
 
 		it("should apply default values for missing inputs", async () => {

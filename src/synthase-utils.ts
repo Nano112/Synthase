@@ -265,6 +265,10 @@ export async function createReusable(
 		synthase.setCachePolicy(options.cachePolicy);
 	}
 
+	// IMPORTANT: Wait for initialization to complete before returning
+	// This ensures that IO schema and dependencies are available immediately
+	await synthase.waitForInitialization();
+
 	// Return convenient wrapper
 	return {
 		synthase,

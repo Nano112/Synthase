@@ -206,7 +206,7 @@ export class Synthase {
 					console.log(`✅ Using cached script (content unchanged): ${id}`);
 					loadedScript = cached.script;
 				} else {
-					loadedScript = this.processScript(id, content);
+					loadedScript = await this.processScript(id, content); // Now async
 					this.cacheScript(id, loadedScript, content, "main");
 				}
 			} else {
@@ -235,7 +235,7 @@ export class Synthase {
 							);
 						}
 
-						loadedScript = this.processScript(id, depContent);
+						loadedScript = await this.processScript(id, depContent); // Now async
 						this.cacheScript(id, loadedScript, depContent, "dependency");
 					} catch (error: any) {
 						throw new Error(
@@ -411,7 +411,7 @@ export class Synthase {
 
 				try {
 					/* ─── compile & wrap ─────────────────────────────────────────── */
-					const loadedScript = this.processScript(scriptId, scriptContent);
+					const loadedScript = await this.processScript(scriptId, scriptContent);
 
 					const importedScript = async (
 						inputs: Record<string, any>
@@ -455,9 +455,12 @@ export class Synthase {
 	/**
 	 * Process script content into LoadedScript
 	 */
-	private processScript(id: string, content: string): LoadedScript {
+	private async processScript(
+		id: string,
+		content: string
+	): Promise<LoadedScript> {
 		const module = this.createModule(content);
-		const { io, deps, defaultFunction } = this.introspectModule(module);
+		const { io, deps, defaultFunction } = await this.introspectModule(module);
 		return { id, io, deps, defaultFunction };
 	}
 
@@ -663,54 +666,44 @@ export class Synthase {
 
 	/**
 	 * Introspect module to extract IO, dependencies, and default function
+	 * Fixed version that properly imports the module to preserve function scope
 	 */
-	private introspectModule(moduleInfo: { url: string; content: string }) {
+	private async introspectModule(moduleInfo: { url: string; content: string }) {
 		console.log("🔧 Introspecting module exports...");
 
 		try {
-			// More robust regex to match the io export - handles multiline objects better
-			const ioMatch = moduleInfo.content.match(
-				/export\s+const\s+io\s*=\s*(\{[\s\S]*?\});/
-			);
-			let ioText = ioMatch ? ioMatch[1] : null;
+			// Import the module as a proper ES6 module to preserve all scope
+			const module = await import(moduleInfo.url);
 
-			// Try alternative format without trailing semicolon if first attempt fails
-			if (!ioText) {
-				const altMatch = moduleInfo.content.match(
-					/export\s+const\s+io\s*=\s*(\{[\s\S]*?\})/
-				);
-				ioText = altMatch ? altMatch[1] : null;
+			// Extract IO schema
+			if (!module.io) {
+				throw new Error("No 'io' export found in script");
 			}
 
-			if (!ioText) throw new Error("No 'io' export found in script");
-
-			// DANGEROUS: but it's the whole point of this project
-			const io = (0, eval)(`(${ioText})`);
-
-			// More flexible regex for default function - handles various formats
-			let fnMatch = moduleInfo.content.match(
-				/export\s+default\s+(async\s+function[^{]*\{[\s\S]*\})/
-			);
-
-			// Try arrow function format if regular function doesn't match
-			if (!fnMatch) {
-				fnMatch = moduleInfo.content.match(
-					/export\s+default\s+(async\s*\([^)]*\)\s*=>\s*\{[\s\S]*\})/
-				);
-			}
-
-			if (!fnMatch)
+			// Extract default function
+			if (!module.default || typeof module.default !== "function") {
 				throw new Error("No default function export found in script");
-			// DANGEROUS: but it's the whole point of this project
-			const defaultFunction = (0, eval)(`(${fnMatch[1]})`);
+			}
 
+			const io = module.io;
+			const defaultFunction = module.default;
 			const deps = this.extractDependencies(moduleInfo.content);
 
+			// Clean up the blob URL
 			URL.revokeObjectURL(moduleInfo.url);
 
 			return { io: io as IOSchema, deps, defaultFunction };
 		} catch (error: any) {
+			// Clean up the blob URL on error
 			URL.revokeObjectURL(moduleInfo.url);
+
+			// If it's an import error, try to give a more helpful message
+			if (error.message.includes("import")) {
+				throw new Error(
+					`Script import failed: ${error.message}. Make sure your script exports are valid ES6 module syntax.`
+				);
+			}
+
 			throw new Error(`Script introspection failed: ${error.message}`);
 		}
 	}
